@@ -1,0 +1,49 @@
+[package]
+name = "folder-guard"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Монитор подозрительной активности в папках: защита Windows от шифровальщиков"
+authors = ["Kir"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/YOUR_GITHUB_USERNAME/folder-guard"
+keywords = ["ransomware", "security", "windows", "etw", "monitoring"]
+categories = ["command-line-utilities", "filesystem", "os::windows-apis"]
+default-run = "folder-guard"
+exclude = ["docs/", ".github/"]
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", features = ["serde"] }
+crossbeam-channel = "0.5.17"
+directories = "6.0.0"
+eframe = "0.37.0"
+egui = "0.37.0"
+env_logger = "0.11.11"
+log = "0.4.35"
+notify = "8.2.1"
+parking_lot = "0.13.0"
+rand = "0.10.3"
+rfd = "0.18.0"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sysinfo = "0.40.1"
+toml = "1.2.1"
+walkdir = "2.5.0"
+
+[target."cfg(windows)".dependencies]
+ferrisetw = "1.2.0"
+tauri-winrt-notification = "0.8.1"
+tray-icon = "0.26.1"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_Security_WinTrust", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging", "Win32_System_ProcessStatus", "Win32_UI_Shell", "Win32_Security_Cryptography"] }
+winreg = "0.56.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+
+[build-dependencies]
+winresource = "0.1.34"

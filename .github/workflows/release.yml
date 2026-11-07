@@ -1,0 +1,82 @@
+name: Release
+
+# Выпуск: git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Сборка и публикация
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Версия в Cargo.toml совпадает с тегом
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Тег ${{ github.ref_name }} не совпадает с версией v$version в Cargo.toml"
+          }
+
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+
+      - name: Архив и контрольные суммы
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $name = "folder-guard-$tag-windows-x64"
+          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
+          Copy-Item target/release/folder-guard.exe, target/release/ransim.exe, README.md, CHANGELOG.md, LICENSE-MIT, LICENSE-APACHE "dist/$name/"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
+          Copy-Item target/release/folder-guard.exe "dist/folder-guard-$tag-windows-x64.exe"
+          Remove-Item -Recurse "dist/$name"
+          Get-ChildItem dist -File | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+          Get-ChildItem dist
+
+      - name: Текст релиза из CHANGELOG
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $lines = Get-Content CHANGELOG.md -Encoding utf8
+          $start = -1
+          $end = $lines.Count
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($start -lt 0 -and $lines[$i] -match "^## \[$([regex]::Escape($version))\]") { $start = $i + 1; continue }
+            # Следующий раздел или блок ссылок [0.1.0]: https://... в конце файла.
+            if ($start -ge 0 -and ($lines[$i] -match "^## \[" -or $lines[$i] -match "^\[[^\]]+\]: ")) { $end = $i; break }
+          }
+          if ($start -lt 0) { throw "В CHANGELOG.md нет раздела ## [$version]" }
+          $body = ($lines[$start..($end - 1)] -join "`n").Trim()
+          $footer = @"
+
+          ## Установка
+
+          1. Скачайте ``folder-guard-${{ github.ref_name }}-windows-x64.zip`` (или один exe).
+          2. Запустите ``folder-guard.exe`` **от имени администратора** — иначе программа не сможет определить, какой процесс шифрует файлы.
+          3. Windows SmartScreen может предупредить о неизвестном издателе: exe не подписан. Нажмите «Подробнее» → «Выполнить в любом случае» или соберите программу сами из исходников.
+
+          Контрольные суммы — в ``SHA256SUMS.txt``.
+          "@
+          Set-Content notes.md ($body + "`n" + $footer) -Encoding utf8
+
+      - name: Создать релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $flags = @()
+          if ($tag.Contains('-')) { $flags += '--prerelease' }
+          gh release create $tag (Get-ChildItem dist -File).FullName --title "Folder Guard $tag" --notes-file notes.md @flags
